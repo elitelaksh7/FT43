@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Test - OCR Scanner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .camera-container {
+            position: relative;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+        canvas {
+            display: none;
+        }
+        .preview-image {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+            margin-top: 20px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .error {
+            color: red;
+            padding: 10px;
+            background-color: #ffe6e6;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            color: green;
+            padding: 10px;
+            background-color: #e6ffe6;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>📷 Camera Test - OCR Scanner</h1>
+    <p>This page tests camera functionality for the OCR scanner component.</p>
+
+    <div class="file-input">
+        <h3>Option 1: Upload Image File</h3>
+        <input type="file" id="fileInput" accept="image/*">
+    </div>
+
+    <div>
+        <h3>Option 2: Use Camera</h3>
+        <div class="controls">
+            <button id="startCamera">Start Camera</button>
+            <button id="capturePhoto" disabled>Capture Photo</button>
+            <button id="stopCamera" disabled>Stop Camera</button>
+        </div>
+        
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline muted style="display: none;"></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <img id="capturedImage" class="preview-image" style="display: none;" alt="Captured image">
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const capturedImage = document.getElementById('capturedImage');
+        const startCameraBtn = document.getElementById('startCamera');
+        const capturePhotoBtn = document.getElementById('capturePhoto');
+        const stopCameraBtn = document.getElementById('stopCamera');
+        const fileInput = document.getElementById('fileInput');
+        const errorDiv = document.getElementById('error');
+        const successDiv = document.getElementById('success');
+
+        let stream = null;
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            successDiv.style.display = 'none';
+        }
+
+        function showSuccess(message) {
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorDiv.style.display = 'none';
+            successDiv.style.display = 'none';
+        }
+
+        async function startCamera() {
+            try {
+                hideMessages();
+                
+                // Request camera access
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment', // Use back camera on mobile
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+
+                video.srcObject = stream;
+                video.style.display = 'block';
+                capturedImage.style.display = 'none';
+
+                // Update button states
+                startCameraBtn.disabled = true;
+                capturePhotoBtn.disabled = false;
+                stopCameraBtn.disabled = false;
+
+                showSuccess('Camera started successfully! You can now capture photos.');
+
+                video.onloadedmetadata = () => {
+                    console.log('Video metadata loaded');
+                    console.log(`Video dimensions: ${video.videoWidth}x${video.videoHeight}`);
+                };
+
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                
+                let errorMessage = 'Unable to access camera. ';
+                if (error.name === 'NotAllowedError') {
+                    errorMessage += 'Permission denied. Please allow camera access and try again.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage += 'No camera found on this device.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMessage += 'Camera not supported on this browser.';
+                } else {
+                    errorMessage += error.message;
+                }
+                
+                showError(errorMessage);
+            }
+        }
+
+        function capturePhoto() {
+            try {
+                if (!stream || !video.videoWidth || !video.videoHeight) {
+                    showError('Camera not ready. Please wait for camera to initialize.');
+                    return;
+                }
+
+                // Set canvas dimensions to match video
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                // Draw video frame to canvas
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Convert canvas to data URL
+                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Display captured image
+                capturedImage.src = dataURL;
+                capturedImage.style.display = 'block';
+                video.style.display = 'none';
+
+                showSuccess('Photo captured successfully! Image is ready for OCR processing.');
+                
+                console.log('Photo captured:', {
+                    width: canvas.width,
+                    height: canvas.height,
+                    dataSize: dataURL.length
+                });
+
+            } catch (error) {
+                console.error('Error capturing photo:', error);
+                showError('Failed to capture photo: ' + error.message);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+
+            video.style.display = 'none';
+            video.srcObject = null;
+
+            // Update button states
+            startCameraBtn.disabled = false;
+            capturePhotoBtn.disabled = true;
+            stopCameraBtn.disabled = true;
+
+            hideMessages();
+        }
+
+        // Handle file upload
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                // Validate file type
+                if (!file.type.startsWith('image/')) {
+                    showError('Please select an image file.');
+                    return;
+                }
+
+                // Validate file size (max 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    showError('File size too large. Please select an image under 10MB.');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    capturedImage.src = e.target.result;
+                    capturedImage.style.display = 'block';
+                    video.style.display = 'none';
+                    stopCamera();
+                    showSuccess('Image uploaded successfully! Ready for OCR processing.');
+                };
+                reader.onerror = () => {
+                    showError('Error reading file.');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Event listeners
+        startCameraBtn.addEventListener('click', startCamera);
+        capturePhotoBtn.addEventListener('click', capturePhoto);
+        stopCameraBtn.addEventListener('click', stopCamera);
+
+        // Check if getUserMedia is supported
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showError('Camera API not supported in this browser. Please use a modern browser or upload an image file instead.');
+            startCameraBtn.disabled = true;
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', stopCamera);
+    </script>
+</body>
+</html>

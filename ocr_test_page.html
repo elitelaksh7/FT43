@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR API Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .preview {
+            max-width: 100%;
+            margin-top: 10px;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background-color: #f1f1f1;
+            cursor: pointer;
+            border: 1px solid #ccc;
+        }
+        .tab.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>OCR API Test Page</h1>
+    
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" id="tab-receipt">Receipt Scanner</div>
+            <div class="tab" id="tab-payment">Payment History</div>
+        </div>
+        
+        <div class="section" id="uploadSection">
+            <h2>Upload Image</h2>
+            <input type="file" id="fileInput" accept="image/*">
+            <div>
+                <img id="imagePreview" class="preview" style="display: none;" />
+            </div>
+            <button id="scanButton" disabled>Scan Image</button>
+        </div>
+        
+        <div class="section" id="resultsSection" style="display: none;">
+            <h2>Results</h2>
+            <div>
+                <h3>Extracted Data:</h3>
+                <pre id="extractedData">Processing...</pre>
+            </div>
+            <button id="clearButton">Clear & Try Again</button>
+        </div>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const scanButton = document.getElementById('scanButton');
+        const resultsSection = document.getElementById('resultsSection');
+        const extractedData = document.getElementById('extractedData');
+        const clearButton = document.getElementById('clearButton');
+        const tabReceipt = document.getElementById('tab-receipt');
+        const tabPayment = document.getElementById('tab-payment');
+        
+        // Track current mode
+        let currentMode = 'receipt';
+        
+        // Handle tab switching
+        tabReceipt.addEventListener('click', () => {
+            tabReceipt.classList.add('active');
+            tabPayment.classList.remove('active');
+            currentMode = 'receipt';
+        });
+        
+        tabPayment.addEventListener('click', () => {
+            tabPayment.classList.add('active');
+            tabReceipt.classList.remove('active');
+            currentMode = 'payment';
+        });
+        
+        // Handle file selection
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imagePreview.style.display = 'block';
+                    scanButton.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        // Handle scan button click
+        scanButton.addEventListener('click', async () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            
+            // Show loading state
+            scanButton.disabled = true;
+            scanButton.textContent = 'Processing...';
+            resultsSection.style.display = 'block';
+            extractedData.textContent = 'Processing image...';
+            
+            try {
+                // Create form data
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Determine endpoint based on mode
+                const endpoint = currentMode === 'receipt' 
+                    ? 'http://localhost:8002/parse-image/' 
+                    : 'http://localhost:8002/parse-payment-app/';
+                
+                // Make API request
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: formData,
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                extractedData.textContent = JSON.stringify(data, null, 2);
+                
+            } catch (error) {
+                console.error('Error scanning image:', error);
+                extractedData.textContent = `Error: ${error.message}\n\nFallback to mock data...`;
+                
+                // Provide mock data as fallback
+                if (currentMode === 'receipt') {
+                    extractedData.textContent += '\n\n' + JSON.stringify({
+                        "recipientName": "Whole Foods Market",
+                        "amount": 87.45,
+                        "isDebit": true,
+                        "timestamp": new Date().toISOString(),
+                        "raw_text_from_ocr": "Mock OCR text for receipt"
+                    }, null, 2);
+                } else {
+                    extractedData.textContent += '\n\n' + JSON.stringify({
+                        "transactions": [
+                            {
+                                "merchant": "EatClub",
+                                "amount": 220,
+                                "date": "10 August",
+                                "type": "debit"
+                            },
+                            {
+                                "merchant": "EatClub",
+                                "amount": 220,
+                                "date": "9 August",
+                                "type": "debit"
+                            }
+                        ],
+                        "count": 2,
+                        "app_detected": "EatClub",
+                        "confidence": 0.85
+                    }, null, 2);
+                }
+            } finally {
+                scanButton.textContent = 'Scan Image';
+                scanButton.disabled = false;
+            }
+        });
+        
+        // Handle clear button click
+        clearButton.addEventListener('click', () => {
+            // Reset form
+            fileInput.value = '';
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
+            resultsSection.style.display = 'none';
+            extractedData.textContent = '';
+            scanButton.disabled = true;
+        });
+    </script>
+</body>
+</html>

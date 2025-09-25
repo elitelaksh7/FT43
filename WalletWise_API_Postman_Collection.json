@@ -1,0 +1,353 @@
+{
+  "info": {
+    "name": "WalletWise AI Backend API",
+    "description": "Complete API collection for testing WalletWise AI Backend endpoints",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Transaction Parsing",
+      "item": [
+        {
+          "name": "Parse SMS - Zomato",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"You spent Rs.500 at Zomato on 2024-01-15\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parse-text/",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse-text", ""]
+            },
+            "description": "Parse a Zomato transaction from SMS text"
+          }
+        },
+        {
+          "name": "Parse SMS - Swiggy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"INR 1200 debited from your account. Paid to Swiggy Instamart on 2024-01-16\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parse-text/",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse-text", ""]
+            },
+            "description": "Parse a Swiggy Instamart transaction"
+          }
+        },
+        {
+          "name": "Parse SMS - H&M",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Transaction successful! Rs.2500 paid to H&M via UPI Ref: 123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parse-text/",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse-text", ""]
+            },
+            "description": "Parse an H&M clothing store transaction"
+          }
+        },
+        {
+          "name": "Parse Image (OCR)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/receipt/image.jpg",
+                  "description": "Upload a receipt or bill image"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parse-image/",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse-image", ""]
+            },
+            "description": "Extract transaction details from receipt/bill image using OCR"
+          }
+        }
+      ],
+      "description": "Endpoints for parsing transactions from text and images"
+    },
+    {
+      "name": "AI Categorization",
+      "item": [
+        {
+          "name": "Get Category - Cached (Zomato)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Zomato\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/get-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["get-category", ""]
+            },
+            "description": "Get category for Zomato (should return cached result: Food)"
+          }
+        },
+        {
+          "name": "Get Category - AI Prediction (Netflix)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Netflix\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/get-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["get-category", ""]
+            },
+            "description": "Get AI prediction for Netflix (new merchant)"
+          }
+        },
+        {
+          "name": "Get Category - All Cached Merchants",
+          "item": [
+            {
+              "name": "Swiggy Instamart → Groceries",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Swiggy Instamart\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/get-category/",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["get-category", ""]
+                }
+              }
+            },
+            {
+              "name": "H&M → Clothes",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"H&M\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/get-category/",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["get-category", ""]
+                }
+              }
+            },
+            {
+              "name": "Apollo Pharmacy → Health",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Apollo Pharmacy\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/get-category/",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["get-category", ""]
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "description": "AI-powered transaction categorization with caching"
+    },
+    {
+      "name": "Learning System",
+      "item": [
+        {
+          "name": "Confirm Category - Netflix",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_name\": \"Netflix\",\n  \"confirmed_category\": \"Entertainment\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/confirm-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["confirm-category", ""]
+            },
+            "description": "Teach the system that Netflix should be categorized as Entertainment"
+          }
+        },
+        {
+          "name": "Confirm Category - Uber",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_name\": \"Uber\",\n  \"confirmed_category\": \"Travelling\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/confirm-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["confirm-category", ""]
+            },
+            "description": "Teach the system that Uber should be categorized as Travelling"
+          }
+        },
+        {
+          "name": "Confirm Category - BigBasket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receiver_name\": \"BigBasket\",\n  \"confirmed_category\": \"Groceries\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/confirm-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["confirm-category", ""]
+            },
+            "description": "Teach the system that BigBasket should be categorized as Groceries"
+          }
+        }
+      ],
+      "description": "User feedback system for improving categorization accuracy"
+    },
+    {
+      "name": "Learning Verification",
+      "item": [
+        {
+          "name": "Verify Netflix Learning",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Netflix\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/get-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["get-category", ""]
+            },
+            "description": "Verify that Netflix is now cached as Entertainment (run after confirming category)"
+          }
+        },
+        {
+          "name": "Verify Uber Learning",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Uber\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/get-category/",
+              "host": ["{{baseUrl}}"],
+              "path": ["get-category", ""]
+            },
+            "description": "Verify that Uber is now cached as Travelling"
+          }
+        }
+      ],
+      "description": "Test requests to verify that the learning system is working correctly"
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000",
+      "description": "Base URL for the WalletWise AI Backend API"
+    }
+  ]
+}
