@@ -11,10 +11,7 @@ import MobileNavigation from "@/components/MobileNavigation";
 import ExpenseDashboard from "@/components/ExpenseDashboard";
 import SMSTransactionParser from "@/components/SMSTransactionParser";
 import OCRBillScanner from "@/components/OCRBillScanner";
-import SimpleCameraTest from "@/components/SimpleCameraTest";
-import EnhancedAICategorizationEngine from "@/components/EnhancedAICategorizationEngine";
-import SimpleCategorizationTest from "@/components/SimpleCategorizationTest";
-import ExpenseTrackerEnhanced from './components/ExpenseTrackerEnhanced';
+import AICategorizationEngine from "@/components/AICategorizationEngine";
 import SmartPriceComparison from "@/components/SmartPriceComparison";
 import IntelligentNudges from "@/components/IntelligentNudges";
 import TransactionModal from "@/components/TransactionModal";
@@ -53,9 +50,6 @@ function Dashboard() {
       <div className="px-4 mt-6">
         <IntelligentNudges />
       </div>
-      <div className="px-4 mt-6">
-        <SimpleCategorizationTest />
-      </div>
     </div>
   );
 }
@@ -63,7 +57,6 @@ function Dashboard() {
 function Scanner() {
   return (
     <div className="p-4 pb-24 space-y-6">
-      <SimpleCameraTest />
       <OCRBillScanner />
       <SMSTransactionParser />
     </div>
@@ -71,19 +64,40 @@ function Scanner() {
 }
 
 function Categorize() {
+  // TODO: remove mock functionality
+  const mockTransactions = [
+    {
+      id: '1',
+      description: 'Coffee and pastry purchase',
+      amount: 12.50,
+      merchant: 'Starbucks',
+      suggestedCategory: 'Food & Dining',
+      confidence: 0.95,
+      alternativeCategories: ['Entertainment', 'Personal Care']
+    },
+    {
+      id: '2', 
+      description: 'Gas station fuel purchase',
+      amount: 45.80,
+      merchant: 'Shell Gas Station',
+      suggestedCategory: 'Transportation',
+      confidence: 0.88,
+      alternativeCategories: ['Business', 'Travel']
+    },
+    {
+      id: '3',
+      description: 'Electronics store purchase',
+      amount: 299.99,
+      merchant: 'Best Buy',
+      suggestedCategory: 'Shopping',
+      confidence: 0.72,
+      alternativeCategories: ['Business', 'Education', 'Entertainment']
+    }
+  ];
+
   return (
-    <div className="p-4 pb-24 space-y-6">
-      <div className="grid gap-6">
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">🤖 AI Categorization Test</h2>
-          <SimpleCategorizationTest />
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">📊 Categorized Expenses Dashboard</h2>
-          <ExpenseTrackerEnhanced />
-        </div>
-      </div>
+    <div className="p-4 pb-24">
+      <AICategorizationEngine transactions={mockTransactions} />
     </div>
   );
 }

@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Camera, Upload, X, Check, Scan, FileImage, Receipt, CreditCard } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Camera, Upload, X, Check, Scan, FileImage, Play } from 'lucide-react';
 
 interface LineItem {
   id: string;
@@ -25,293 +24,246 @@ interface ParsedBill {
   confidence: number;
 }
 
-interface TransactionItem {
-  merchant: string;
-  amount: number;
-  date: string;
-  type: 'credit' | 'debit';
-  id?: string;
-}
-
-interface ParsedTransactionHistory {
-  transactions: TransactionItem[];
-  count: number;
-  app_detected: string;
-  confidence: number;
-  raw_text_from_ocr?: string;
-}
-
 interface OCRBillScannerProps {
   onBillParsed?: (bill: ParsedBill) => void;
-  onTransactionHistoryParsed?: (transactions: TransactionItem[]) => void;
 }
 
-export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParsed }: OCRBillScannerProps) {
+export default function OCRBillScanner({ onBillParsed }: OCRBillScannerProps) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [parsedBill, setParsedBill] = useState<ParsedBill | null>(null);
-  const [parsedTransactions, setParsedTransactions] = useState<TransactionItem[] | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-  const [activeTab, setActiveTab] = useState<'bill' | 'transactions'>('bill');
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [isCameraReady, setIsCameraReady] = useState(false);
-  
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [ingesting, setIngesting] = useState(false);
+  const [analysisReceiptId, setAnalysisReceiptId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Initialize camera when showCamera becomes true
-  useEffect(() => {
-    if (showCamera) {
-      initializeCamera();
-    } else {
-      stopCamera();
-    }
-    return () => stopCamera();
-  }, [showCamera]);
-
-  const initializeCamera = async () => {
-    try {
-      setCameraError(null);
-      setIsCameraReady(false);
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'environment', // Use back camera on mobile
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        
-        videoRef.current.onloadedmetadata = () => {
-          setIsCameraReady(true);
-        };
-      }
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      setCameraError('Unable to access camera. Please check permissions.');
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsCameraReady(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current || !isCameraReady) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    if (!context) return;
-
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Draw video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Convert canvas to base64 image
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    setSelectedImage(imageDataUrl);
-    setShowCamera(false);
-    console.log('Photo captured successfully');
-  };
+  const ReceiptAnalysisPanel = lazy(() => import('./ReceiptAnalysisPanel'));
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        console.error('Please select an image file');
-        return;
-      }
-
-      // Validate file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        console.error('File size too large. Please select an image under 10MB');
-        return;
-      }
-
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
         setSelectedImage(result);
         console.log('Image uploaded for OCR processing');
       };
-      reader.onerror = () => {
-        console.error('Error reading file');
-      };
       reader.readAsDataURL(file);
     }
   };
 
-  const captureFromCamera = () => {
-    console.log('Camera capture initiated');
+  const startCamera = async () => {
+    if (isStartingCamera) return;
+    setIsStartingCamera(true);
     setCameraError(null);
-    setShowCamera(true);
+    try {
+      // First try with default constraints for better compatibility
+      const constraints: MediaStreamConstraints = {
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30 }
+        },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        
+        // Wait for video metadata to load before playing
+        videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded');
+          if (videoRef.current) {
+            videoRef.current.play()
+              .then(() => {
+                console.log('Video play started successfully');
+                setVideoPlaying(true);
+                setCameraError(null);
+              })
+              .catch(err => {
+                console.warn('Auto-play blocked, user interaction required:', err);
+                setVideoPlaying(false);
+              });
+          }
+        };
+        
+        // Additional event to ensure video is ready
+        videoRef.current.oncanplay = () => {
+          console.log('Video can start playing');
+          setCameraError(null);
+        };
+        
+        videoRef.current.oncanplaythrough = () => {
+          console.log('Video can play through without buffering');
+          setCameraError(null);
+        };
+        
+        // Force video to load metadata
+        videoRef.current.load();
+      }
+      setShowCamera(true);
+    } catch (err: any) {
+      console.error('Failed to start camera', err);
+      setCameraError(
+        err?.name === 'NotAllowedError'
+          ? 'Camera permission denied. Please allow camera access in your browser.'
+          : err?.name === 'NotFoundError'
+          ? 'No camera device found. Please connect a camera.'
+          : 'Unable to access the camera.'
+      );
+      setShowCamera(false);
+    } finally {
+      setIsStartingCamera(false);
+    }
   };
 
-  const scanImage = async () => {
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+    setVideoPlaying(false);
+    setVideoReady(false);
+  };
+
+  const manualPlayVideo = () => {
+    if (videoRef.current) {
+      videoRef.current.play()
+        .then(() => {
+          console.log('Manual video play successful');
+          setVideoPlaying(true);
+          setCameraError(null);
+        })
+        .catch(err => {
+          console.error('Failed to play video:', err);
+          setCameraError('Failed to start video playback');
+        });
+    }
+  };
+
+  const captureFromCamera = async () => {
+    console.log('Camera capture initiated');
+    if (!showCamera) await startCamera();
+  };
+
+  const takePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      console.error('Video or canvas element not available');
+      setCameraError('Camera elements not available');
+      return;
+    }
+    
+    // Check if video is playing and has valid dimensions
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+      console.warn('Video not fully loaded, attempting capture anyway...');
+      // Don't return early, try to capture anyway
+    }
+    
+    const width = video.videoWidth || video.clientWidth || 1280;
+    const height = video.videoHeight || video.clientHeight || 720;
+    
+    console.log('Capturing photo with dimensions:', { width, height, readyState: video.readyState });
+    
+    // Ensure canvas has valid dimensions
+    if (width <= 0 || height <= 0) {
+      setCameraError('Invalid video dimensions for capture');
+      return;
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Clear canvas first
+      ctx.clearRect(0, 0, width, height);
+      // Draw the video frame
+      ctx.drawImage(video, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      
+      // Verify we got a valid image (not just black)
+      if (dataUrl && dataUrl.length > 1000) {
+        setSelectedImage(dataUrl);
+        stopCamera();
+      } else {
+        setCameraError('Failed to capture image. Please try again.');
+      }
+    }
+  };
+
+  // Clean up camera on unmount
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
+  const scanBill = async () => {
     if (!selectedImage) return;
     
     setIsProcessing(true);
-    console.log(`Processing ${activeTab === 'bill' ? 'bill' : 'transaction history'} with OCR`);
+    console.log('Processing bill with OCR');
     
-    try {
-      // Convert base64 to blob
-      const base64Response = await fetch(selectedImage);
-      const blob = await base64Response.blob();
-      
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', blob, 'screenshot.png');
-      
-      // Determine which endpoint to use
-      const endpoint = activeTab === 'bill' 
-        ? 'http://localhost:8002/parse-image/'
-        : 'http://localhost:8002/parse-payment-app/';
-      
-      // Send request to backend
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to process image: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // If processing receipt, also get AI categorization
-      if (activeTab === 'bill' && data.recipientName) {
-        try {
-          const categoryResponse = await fetch(`http://localhost:8002/get-category/${encodeURIComponent(data.recipientName)}`, {
-            method: 'GET',
-          });
-          
-          if (categoryResponse.ok) {
-            const categoryData = await categoryResponse.json();
-            data.ai_category = categoryData.category;
-            data.ai_confidence = categoryData.confidence;
-            data.ai_reasoning = categoryData.reasoning;
-            console.log('AI Categorization:', categoryData);
+    // TODO: remove mock functionality - integrate with OpenAI Vision API
+    setTimeout(() => {
+      const mockBill: ParsedBill = {
+        id: Date.now().toString(),
+        merchantName: 'Whole Foods Market',
+        totalAmount: 87.45,
+        date: new Date().toISOString().split('T')[0],
+        billNumber: 'INV-2024-001234',
+        lineItems: [
+          {
+            id: '1',
+            description: 'Organic Bananas',
+            quantity: 2,
+            unitPrice: 3.99,
+            total: 7.98,
+            category: 'Groceries'
+          },
+          {
+            id: '2',
+            description: 'Almond Milk',
+            quantity: 1,
+            unitPrice: 4.49,
+            total: 4.49,
+            category: 'Groceries'
+          },
+          {
+            id: '3',
+            description: 'Chicken Breast',
+            quantity: 1,
+            unitPrice: 12.99,
+            total: 12.99,
+            category: 'Groceries'
+          },
+          {
+            id: '4',
+            description: 'Mixed Salad',
+            quantity: 2,
+            unitPrice: 5.99,
+            total: 11.98,
+            category: 'Groceries'
           }
-        } catch (categoryError) {
-          console.warn('Failed to get AI categorization:', categoryError);
-        }
-      }
+        ],
+        confidence: 0.92
+      };
       
-      if (activeTab === 'bill') {
-        setParsedBill(data);
-        onBillParsed?.(data);
-        setParsedTransactions(null);
-      } else {
-        // Handle transaction data
-        setParsedTransactions(data.transactions);
-        onTransactionHistoryParsed?.(data.transactions);
-        setParsedBill(null);
-      }
-    } catch (error) {
-      console.error('Error processing image:', error);
-      
-      // Fallback to mock data if API fails
-      if (activeTab === 'bill') {
-        // Mock bill data
-        const mockBill: ParsedBill = {
-          id: Date.now().toString(),
-          merchantName: 'Whole Foods Market',
-          totalAmount: 87.45,
-          date: new Date().toISOString().split('T')[0],
-          billNumber: 'INV-2024-001234',
-          lineItems: [
-            {
-              id: '1',
-              description: 'Organic Bananas',
-              quantity: 2,
-              unitPrice: 3.99,
-              total: 7.98,
-              category: 'Groceries'
-            },
-            {
-              id: '2',
-              description: 'Almond Milk',
-              quantity: 1,
-              unitPrice: 4.49,
-              total: 4.49,
-              category: 'Groceries'
-            },
-            {
-              id: '3',
-              description: 'Chicken Breast',
-              quantity: 1,
-              unitPrice: 12.99,
-              total: 12.99,
-              category: 'Groceries'
-            },
-            {
-              id: '4',
-              description: 'Mixed Salad',
-              quantity: 2,
-              unitPrice: 5.99,
-              total: 11.98,
-              category: 'Groceries'
-            }
-          ],
-          confidence: 0.92
-        };
-        setParsedBill(mockBill);
-        onBillParsed?.(mockBill);
-      } else {
-        // Mock transaction history data
-        const mockTransactions: TransactionItem[] = [
-          {
-            merchant: 'EatClub',
-            amount: 220,
-            date: '10 August',
-            type: 'debit',
-            id: '1'
-          },
-          {
-            merchant: 'EatClub',
-            amount: 220,
-            date: '9 August',
-            type: 'debit',
-            id: '2'
-          },
-          {
-            merchant: 'chanakya065',
-            amount: 110,
-            date: '8 August',
-            type: 'credit',
-            id: '3'
-          },
-          {
-            merchant: 'M PRANAY',
-            amount: 60,
-            date: '6 August',
-            type: 'credit',
-            id: '4'
-          }
-        ];
-        setParsedTransactions(mockTransactions);
-        onTransactionHistoryParsed?.(mockTransactions);
-      }
-    } finally {
+      setParsedBill(mockBill);
+      onBillParsed?.(mockBill);
       setIsProcessing(false);
-    }
+    }, 3000);
   };
 
   const confirmBill = () => {
@@ -322,71 +274,52 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
     }
   };
 
-  const confirmTransactions = () => {
-    if (parsedTransactions) {
-      console.log('Transactions confirmed:', parsedTransactions);
-      setSelectedImage(null);
-      setParsedTransactions(null);
+  const openDetailedAnalysis = async () => {
+    if (!parsedBill) {
+      console.log('No parsed bill available');
+      return;
+    }
+    
+    console.log('Opening detailed analysis for:', parsedBill);
+    
+    try {
+      setIngesting(true);
+      
+      // Generate a unique receipt ID for mock analysis
+      const mockReceiptId = `receipt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Simulate a brief loading time for better UX
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Set the receipt ID and open the analysis panel
+      setAnalysisReceiptId(mockReceiptId);
+      setAnalysisOpen(true);
+      
+      console.log('Analysis panel opened with ID:', mockReceiptId);
+      
+    } catch (error) {
+      console.error('Error opening detailed analysis:', error);
+    } finally {
+      setIngesting(false);
     }
   };
 
   const resetScanner = () => {
     setSelectedImage(null);
     setParsedBill(null);
-    setParsedTransactions(null);
     setShowCamera(false);
-    setCameraError(null);
-    setIsCameraReady(false);
-    stopCamera();
-    
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   return (
     <div className="space-y-6" data-testid="ocr-scanner">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        className="hidden"
-        data-testid="file-input"
-      />
-      
       <Card className="hover-elevate">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Scan className="h-5 w-5" />
-            OCR Scanner
+            OCR Bill Scanner
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'bill' | 'transactions')}>
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="bill" data-testid="tab-receipt-scanner">
-                <Receipt className="h-4 w-4 mr-2" />
-                Receipt Scanner
-              </TabsTrigger>
-              <TabsTrigger value="transactions" data-testid="tab-transaction-scanner">
-                <CreditCard className="h-4 w-4 mr-2" />
-                Payment History
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="bill" className="mt-0">
-              <p className="text-sm text-muted-foreground mb-4">
-                Scan individual receipts to extract line items, merchant details, and total amount.
-              </p>
-            </TabsContent>
-            <TabsContent value="transactions" className="mt-0">
-              <p className="text-sm text-muted-foreground mb-4">
-                Scan transaction history screenshots from payment apps to import multiple transactions at once.
-              </p>
-            </TabsContent>
-          </Tabs>
           {!selectedImage && !showCamera && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button
@@ -419,86 +352,111 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
 
           {showCamera && (
             <div className="text-center space-y-4">
-              <div className="relative h-64 bg-muted rounded-lg overflow-hidden">
-                {cameraError ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <Camera className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-red-500 mb-2">{cameraError}</p>
-                      <Button onClick={captureFromCamera} variant="outline" size="sm">
-                        Try Again
-                      </Button>
+              <div className="relative w-full max-w-md mx-auto">
+                <video
+                  ref={videoRef}
+                  className="w-full h-64 object-cover bg-gray-900 rounded-lg border-2 border-gray-300"
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ transform: 'scaleX(-1)' }} // Mirror the video like a selfie
+                  onLoadedData={() => {
+                    console.log('Video loaded, dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+                    console.log('Video ready state:', videoRef.current?.readyState);
+                    console.log('Video paused:', videoRef.current?.paused);
+                    setCameraError(null);
+                    setVideoPlaying(!videoRef.current?.paused);
+                    
+                    // Give video a moment to stabilize before allowing capture
+                    setTimeout(() => {
+                      if (videoRef.current && videoRef.current.videoWidth > 0) {
+                        setVideoReady(true);
+                        console.log('Video is ready for capture');
+                      }
+                    }, 1000);
+                  }}
+                  onPlay={() => {
+                    console.log('Video started playing');
+                    setVideoPlaying(true);
+                    // Additional delay after play starts
+                    setTimeout(() => setVideoReady(true), 500);
+                  }}
+                  onPause={() => {
+                    console.log('Video paused');
+                    setVideoPlaying(false);
+                    setVideoReady(false);
+                  }}
+                  onError={(e) => {
+                    console.error('Video element error:', e);
+                    setCameraError('Video display error. Please try again.');
+                  }}
+                />
+                <canvas ref={canvasRef} className="hidden" />
+                
+                {/* Loading overlay while starting */}
+                {isStartingCamera && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
+                    <div className="text-white text-center">
+                      <Camera className="h-8 w-8 mx-auto mb-2 animate-pulse" />
+                      <p>Starting camera...</p>
                     </div>
                   </div>
-                ) : !isCameraReady ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <Camera className="h-12 w-12 mx-auto mb-2 animate-pulse" />
-                      <p>Camera is initializing...</p>
-                    </div>
+                )}
+                
+                {/* Manual play button if video isn't playing */}
+                {!isStartingCamera && !videoPlaying && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
+                    <Button onClick={manualPlayVideo} variant="outline" size="lg">
+                      <Play className="h-6 w-6 mr-2" />
+                      Start Video
+                    </Button>
                   </div>
-                ) : (
-                  <>
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover"
-                    />
-                    <canvas
-                      ref={canvasRef}
-                      className="hidden"
-                    />
-                    <div className="absolute inset-0 border-2 border-dashed border-primary/50 pointer-events-none" />
-                    <div className="absolute top-2 left-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
-                      {activeTab === 'bill' ? 'Position receipt in frame' : 'Position screenshot in frame'}
-                    </div>
-                  </>
                 )}
               </div>
+
+              {cameraError && (
+                <div className="text-sm text-destructive bg-red-50 p-3 rounded-lg">
+                  {cameraError}
+                </div>
+              )}
+
               <div className="flex gap-2 justify-center">
-                {isCameraReady && !cameraError && (
-                  <Button 
-                    onClick={capturePhoto} 
-                    className="flex-1"
-                    data-testid="button-capture-photo"
-                  >
-                    <Camera className="h-4 w-4 mr-2" />
-                    Capture Photo
-                  </Button>
-                )}
-                <Button onClick={() => setShowCamera(false)} variant="outline">
+                <Button 
+                  onClick={takePhoto} 
+                  disabled={!!cameraError || isStartingCamera || !videoReady}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  {videoReady ? 'Capture' : 'Getting Ready...'}
+                </Button>
+                <Button onClick={stopCamera} variant="outline">
                   Cancel
                 </Button>
               </div>
             </div>
           )}
 
-          {selectedImage && !parsedBill && !parsedTransactions && (
+          {selectedImage && !parsedBill && (
             <div className="space-y-4">
               <div className="relative">
                 <img
                   src={selectedImage}
-                  alt="Receipt/Transaction preview"
-                  className="w-full max-h-64 object-contain rounded-lg border"
+                  alt="Receipt preview"
+                  className="w-full max-h-64 object-contain rounded-lg"
                 />
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={resetScanner}
-                  className="absolute top-2 right-2 bg-white/80 hover:bg-white"
+                  className="absolute top-2 right-2"
                   data-testid="button-clear-image"
                 >
                   <X className="h-4 w-4" />
                 </Button>
-                <div className="absolute bottom-2 left-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
-                  Ready to scan
-                </div>
               </div>
               
               <Button
-                onClick={scanImage}
+                onClick={scanBill}
                 disabled={isProcessing}
                 className="w-full"
                 data-testid="button-scan-bill"
@@ -506,12 +464,12 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
                 {isProcessing ? (
                   <>
                     <Scan className="h-4 w-4 mr-2 animate-spin" />
-                    {activeTab === 'bill' ? 'Scanning Receipt...' : 'Scanning Transactions...'}
+                    Scanning Receipt...
                   </>
                 ) : (
                   <>
                     <FileImage className="h-4 w-4 mr-2" />
-                    {activeTab === 'bill' ? 'Scan Receipt' : 'Scan Transactions'}
+                    Scan Receipt
                   </>
                 )}
               </Button>
@@ -557,22 +515,6 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
                 <p className="font-medium">Bill Number</p>
                 <p className="text-muted-foreground">{parsedBill.billNumber}</p>
               </div>
-              {(parsedBill as any).ai_category && (
-                <div>
-                  <p className="font-medium">AI Category</p>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{(parsedBill as any).ai_category}</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round(((parsedBill as any).ai_confidence || 0) * 100)}% confidence
-                    </span>
-                  </div>
-                  {(parsedBill as any).ai_reasoning && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {(parsedBill as any).ai_reasoning}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -608,7 +550,7 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
                 data-testid="button-confirm-bill"
               >
                 <Check className="h-4 w-4 mr-1" />
-                Confirm & Add
+                Confirm & Close
               </Button>
               <Button
                 onClick={resetScanner}
@@ -618,63 +560,28 @@ export default function OCRBillScanner({ onBillParsed, onTransactionHistoryParse
                 <X className="h-4 w-4 mr-1" />
                 Rescan
               </Button>
+              <Button
+                onClick={openDetailedAnalysis}
+                variant="secondary"
+                disabled={ingesting}
+                aria-haspopup="dialog"
+              >
+                {ingesting ? 'Opening…' : 'View detailed analysis'}
+              </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Parsed Transaction Results */}
-      {parsedTransactions && parsedTransactions.length > 0 && (
-        <Card className="hover-elevate">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Scanned Transactions</span>
-              <Badge variant="secondary">
-                {parsedTransactions.length} transactions found
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {parsedTransactions.map((transaction, index) => (
-                <div 
-                  key={transaction.id || index} 
-                  className="flex justify-between items-center text-sm border-b p-2"
-                  data-testid={`transaction-${index}`}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium">{transaction.merchant}</p>
-                    <p className="text-muted-foreground text-xs">
-                      {transaction.date}
-                    </p>
-                  </div>
-                  <Badge variant={transaction.type === 'debit' ? 'destructive' : 'secondary'} className="ml-2">
-                    {transaction.type === 'credit' ? '+' : '-'}₹{transaction.amount}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={confirmTransactions}
-                className="flex-1"
-                data-testid="button-confirm-transactions"
-              >
-                <Check className="h-4 w-4 mr-1" />
-                Import All Transactions
-              </Button>
-              <Button
-                onClick={resetScanner}
-                variant="outline"
-                data-testid="button-rescan-transactions"
-              >
-                <X className="h-4 w-4 mr-1" />
-                Rescan
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {analysisReceiptId && (
+        <Suspense fallback={null}>
+          <ReceiptAnalysisPanel
+            receiptId={analysisReceiptId}
+            open={analysisOpen}
+            onOpenChange={setAnalysisOpen}
+            aiEnabled
+          />
+        </Suspense>
       )}
     </div>
   );

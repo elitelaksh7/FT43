@@ -31,43 +31,24 @@ export default function SMSTransactionParser({ onTransactionParsed }: SMSTransac
     setIsProcessing(true);
     console.log('Parsing SMS transaction:', smsText);
     
-    try {
-      const response = await fetch('http://localhost:8002/parse-sms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: smsText }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-      
-      const transaction: ParsedTransaction = await response.json();
-      setParsedTransactions(prev => [transaction, ...prev]);
-      onTransactionParsed?.(transaction);
-      setSmsText('');
-    } catch (error) {
-      console.error('Failed to parse SMS:', error);
-      // Fallback to sample data if API fails
-      const fallbackTransaction: ParsedTransaction = {
+    // TODO: remove mock functionality - integrate with OpenAI for real SMS parsing
+    setTimeout(() => {
+      const mockTransaction: ParsedTransaction = {
         id: Date.now().toString(),
         amount: 125.50,
         type: 'debit',
-        merchant: 'Amazon India (Fallback)',
+        merchant: 'Amazon India',
         timestamp: new Date().toISOString(),
         bankName: 'HDFC Bank',
         category: 'Shopping',
-        confidence: 0.7
+        confidence: 0.95
       };
       
-      setParsedTransactions(prev => [fallbackTransaction, ...prev]);
-      onTransactionParsed?.(fallbackTransaction);
-    } finally {
-      setIsProcessing(false);
+      setParsedTransactions(prev => [mockTransaction, ...prev]);
+      onTransactionParsed?.(mockTransaction);
       setSmsText('');
-    }
+      setIsProcessing(false);
+    }, 2000);
   };
 
   const confirmTransaction = (id: string) => {
